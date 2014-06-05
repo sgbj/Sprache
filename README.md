@@ -47,7 +47,7 @@ Sprache itself draws on some great C# tutorials:
 Examples
 --------
 
-JSON parser:
+JSON:
 ```csharp
 using Sprache;
 using System;
@@ -126,6 +126,75 @@ namespace SpracheJson
             select values.IsDefined ? values.Get().ToArray() : new dynamic[0];
         private static readonly Parser<dynamic> Value = 
             Decimal.Or(String).Or(JObject).Or(JArray).Or(True).Or(False).Or(Null);
+    }
+}
+
+```
+
+BBCode:
+```csharp
+using Sprache;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace SpracheBBCode
+{
+    public static class BBCodeExample
+    {
+        static void Main(string[] args)
+        {
+            Console.WriteLine(Document.Parse("hello [b]world[/b]!"));
+        }
+
+        private static readonly Parser<string> Identifier =
+            from first in Parse.Letter
+            from rest in Parse.LetterOrDigit.Many().Text()
+            select first + rest;
+        static readonly Parser<string> OpenTag =
+            from first in Parse.Char('[')
+            from rest in Identifier
+            from last in Parse.Char(']')
+            select rest;
+        static readonly Parser<TextNode> Text =
+            from text in Parse.CharExcept('[').Many().Text()
+            select new TextNode { Text = text };
+        static readonly Parser<Node> TagNode =
+            from tag in OpenTag
+            from nodes in Parse.Ref(() => Node).Many()
+            from endingOpenTag in Parse.String("[/")
+            from closingTagName in Parse.String(tag)
+            from endingClosingTag in Parse.String("]")
+            select new TagNode { Tag = tag, Children = nodes.ToList() };
+        static readonly Parser<Node> Node = TagNode.XOr(Text);
+        static readonly Parser<Document> Document = Node.Many().Select(n => new Document { Children = n.ToList() });
+    }
+
+    public abstract class Node {}
+    public class TagNode : Node
+    {
+        public string Tag { get; set; }
+        public List<Node> Children { get; set; }
+        public override string ToString()
+        {
+            return string.Format("[{0}]{1}[/{0}]", Tag, string.Join("", Children));
+        }
+    }
+    public class TextNode : Node
+    {
+        public string Text { get; set; }
+        public override string ToString()
+        {
+            return Text;
+        }
+    }
+    public class Document
+    {
+        public List<Node> Children { get; set; }
+        public override string ToString()
+        {
+            return string.Join("", Children);
+        }
     }
 }
 
