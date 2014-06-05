@@ -42,3 +42,91 @@ Sprache itself draws on some great C# tutorials:
 
 * [Luke Hoban's Blog](http://blogs.msdn.com/b/lukeh/archive/2007/08/19/monadic-parser-combinators-using-c-3-0.aspx)
 * [Brian McNamara's Blog](http://lorgonblog.wordpress.com/2007/12/02/c-3-0-lambda-and-the-first-post-of-a-series-about-monadic-parser-combinators/)
+
+
+Examples
+--------
+
+JSON parser:
+```csharp
+using Sprache;
+using System;
+using System.Collections.Generic;
+using System.Dynamic;
+using System.Linq;
+using System.Text.RegularExpressions;
+
+namespace SpracheJson
+{
+    public static class Program
+    {
+        static void Main(string[] args)
+        {
+            Console.WriteLine(string.Join(", ", "[10, 2, 3, 5]".ToDynamic()));
+            Console.WriteLine(
+            @"  {
+                ""firstName"": ""John"",
+                ""lastName"": ""Smith"",
+                ""isAlive"": true,
+                ""age"": 25,
+                ""height_cm"": 167.27,
+                ""test"": 10e2,
+                ""address"": {
+                    ""streetAddress"": ""21 2nd Street"",
+                    ""city"": ""New York"",
+                    ""state"": ""NY"",
+                    ""postalCode"": ""10021-3100""
+                },
+                ""phoneNumbers"": [
+                    { ""type"" : ""home"", ""number"": ""212 555-1234"" },
+                    { ""type"": ""office"" ,  ""number"": ""646 555-4567"" }
+                ]
+            }   ".ToDynamic().phoneNumbers[0].number);
+        }
+
+        public static dynamic ToDynamic(this string input)
+        {
+            return Value.Parse(input);
+        }
+
+        private static dynamic ToDynamic(this IEnumerable<KeyValuePair<string, dynamic>> source)
+        {
+            IDictionary<string, object> obj = new ExpandoObject();
+            foreach (var pair in source)
+            {
+                obj[pair.Key] = pair.Value;
+            }
+            return obj;
+        }
+
+        private static readonly Parser<dynamic> True = Parse.String("true").Select(s => (dynamic)true);
+        private static readonly Parser<dynamic> False = Parse.String("false").Select(s => (dynamic)false);
+        private static readonly Parser<dynamic> Null = Parse.String("null").Select(s => (dynamic)null);
+        private static readonly Parser<dynamic> Decimal =
+            Parse.Regex(@"[-+]?\d*\.?\d+([eE][-+]?\d+)?").Select(s => (dynamic)double.Parse(s));
+        private static readonly Parser<dynamic> String =
+            from openQuote in Parse.Char('"')
+            from content in Parse.Regex(@"(?:[^""\\]|\\.)*")
+            from closeQuote in Parse.Char('"')
+            select Regex.Unescape(content);
+        private static readonly Parser<dynamic> JObject =
+            from open in Parse.Char('{').Token()
+            from pairs in (
+                from name in String.Token()
+                from separator in Parse.Char(':').Token()
+                from value in Parse.Ref(() => Value).Token()
+                select new KeyValuePair<string, dynamic>(name, value)
+            ).DelimitedBy(Parse.Char(',').Token()).Token().Optional()
+            from close in Parse.Char('}').Token()
+            select pairs.IsDefined ? pairs.Get().ToDynamic() : new ExpandoObject();
+        private static readonly Parser<dynamic> JArray =
+            from open in Parse.Char('[').Token()
+            from values in Value.DelimitedBy(Parse.Char(',').Token()).Token().Optional()
+            from close in Parse.Char(']').Token()
+            select values.IsDefined ? values.Get().ToArray() : new dynamic[0];
+        private static readonly Parser<dynamic> Value = 
+            Decimal.Or(String).Or(JObject).Or(JArray).Or(True).Or(False).Or(Null);
+    }
+}
+
+```
